@@ -16,10 +16,13 @@ class Order extends Model
         'note',
         'total',
         'status',
+        'promo_id',
+        'discount',
     ];
 
     protected $casts = [
         'total' => 'decimal:2',
+        'discount' => 'decimal:2',
     ];
 
     // Order milik satu restaurant
@@ -39,4 +42,8 @@ class Order extends Model
     {
         return $this->hasMany(OrderItem::class);
     }
+    public function promo(): BelongsTo
+{
+    return $this->belongsTo(Promo::class);
+}
 }

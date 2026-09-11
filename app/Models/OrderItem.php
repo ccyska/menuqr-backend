@@ -10,6 +10,8 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'menu_id',
+        'variant_id',
+        'addons',
         'quantity',
         'price',
         'subtotal',
@@ -20,6 +22,7 @@ class OrderItem extends Model
         'quantity' => 'integer',
         'price' => 'decimal:2',
         'subtotal' => 'decimal:2',
+        'addons' => 'array',
     ];
 
     // Item milik satu order
@@ -32,5 +35,11 @@ class OrderItem extends Model
     public function menu(): BelongsTo
     {
         return $this->belongsTo(Menu::class);
+    }
+
+    // Item dapat memiliki satu variant
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(MenuVariant::class);
     }
 }

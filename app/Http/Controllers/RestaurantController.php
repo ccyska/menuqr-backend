@@ -25,10 +25,20 @@ class RestaurantController extends Controller
                     $query->where('is_active', true)
                         ->orderBy('sort_order');
                 },
-                'menus' => function ($query) {
-                    $query->where('is_available', true)
-                        ->orderBy('sort_order');
-                }
+               'menus' => function ($query) {
+    $query->where('is_available', true)
+        ->with([
+            'variants' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order');
+            },
+            'addons' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order');
+            },
+        ])
+        ->orderBy('sort_order');
+}
             ])
             ->firstOrFail();
 

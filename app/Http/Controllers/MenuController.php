@@ -9,11 +9,27 @@ use Illuminate\Support\Facades\Storage;
 
 class MenuController extends Controller
 {
-    // Menampilkan semua menu yang tersedia
-    public function index()
+    // Menampilkan semua menu yang tersedia + pencarian
+    public function index(Request $request)
     {
-        $menus = Menu::with(['restaurant', 'category'])
-            ->where('is_available', true)
+        $query = Menu::with([
+            'restaurant',
+            'category',
+            'variants',
+            'addons'
+        ])->where('is_available', true);
+
+        // Pencarian berdasarkan nama atau deskripsi
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $menus = $query
             ->orderBy('sort_order')
             ->get()
             ->map(function ($menu) {
@@ -25,6 +41,29 @@ class MenuController extends Controller
             });
 
         return response()->json($menus);
+    }
+
+    // Menampilkan detail satu menu
+    public function show($id)
+    {
+        $menu = Menu::with([
+            'restaurant',
+            'category',
+            'variants' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order');
+            },
+            'addons' => function ($query) {
+                $query->where('is_active', true)
+                    ->orderBy('sort_order');
+            },
+        ])->findOrFail($id);
+
+        $menu->image_url = $menu->image
+            ? asset('storage/' . $menu->image)
+            : null;
+
+        return response()->json($menu);
     }
 
     // Menambahkan menu
@@ -57,7 +96,6 @@ class MenuController extends Controller
                 ->store('menus', 'public');
         }
 
-        // Simpan menu
         $menu = Menu::create($validated);
 
         // Ambil relasi restaurant dan category
@@ -113,7 +151,6 @@ class MenuController extends Controller
                 ->store('menus', 'public');
         }
 
-        // Update menu
         $menu->update($validated);
 
         // Ambil relasi terbaru
@@ -135,12 +172,11 @@ class MenuController extends Controller
     {
         $menu = Menu::findOrFail($id);
 
-        // Hapus gambar dari storage
+        // Hapus gambar menu
         if ($menu->image) {
             Storage::disk('public')->delete($menu->image);
         }
 
-        // Hapus menu
         $menu->delete();
 
         return response()->json([
@@ -148,4 +184,3 @@ class MenuController extends Controller
         ]);
     }
 }
-

@@ -18,6 +18,39 @@ class TableController extends Controller
         return response()->json($tables);
     }
 
+    // Validasi meja berdasarkan restaurant dan kode meja
+public function validateTable($slug, $code)
+{
+    $table = Table::with('restaurant')
+        ->where('code', $code)
+        ->where('is_active', true)
+        ->whereHas('restaurant', function ($query) use ($slug) {
+            $query->where('slug', $slug)
+                ->where('is_active', true);
+        })
+        ->first();
+
+    if (!$table) {
+        return response()->json([
+            'message' => 'Meja tidak ditemukan atau tidak aktif'
+        ], 404);
+    }
+
+    return response()->json([
+        'restaurant' => [
+            'id' => $table->restaurant->id,
+            'name' => $table->restaurant->name,
+            'slug' => $table->restaurant->slug,
+        ],
+        'table' => [
+            'id' => $table->id,
+            'name' => $table->name,
+            'code' => $table->code,
+            'is_active' => $table->is_active,
+        ],
+    ]);
+}
+
     // Menambahkan meja
     public function store(Request $request)
     {
