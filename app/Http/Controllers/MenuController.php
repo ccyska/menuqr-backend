@@ -9,7 +9,10 @@ use Illuminate\Support\Facades\Storage;
 
 class MenuController extends Controller
 {
-    // Menampilkan semua menu yang tersedia + pencarian
+    // =========================================================
+    // PUBLIC - Menampilkan menu yang tersedia + pencarian
+    // =========================================================
+
     public function index(Request $request)
     {
         $query = Menu::with([
@@ -43,7 +46,50 @@ class MenuController extends Controller
         return response()->json($menus);
     }
 
-    // Menampilkan detail satu menu
+
+    // =========================================================
+    // ADMIN - Menampilkan SEMUA menu
+    // Termasuk menu yang sedang habis / tidak tersedia
+    // =========================================================
+
+    public function adminIndex(Request $request)
+    {
+        $query = Menu::with([
+            'restaurant',
+            'category',
+            'variants',
+            'addons'
+        ]);
+
+        // Pencarian berdasarkan nama atau deskripsi
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $menus = $query
+            ->orderBy('sort_order')
+            ->get()
+            ->map(function ($menu) {
+                $menu->image_url = $menu->image
+                    ? asset('storage/' . $menu->image)
+                    : null;
+
+                return $menu;
+            });
+
+        return response()->json($menus);
+    }
+
+
+    // =========================================================
+    // PUBLIC - Menampilkan detail satu menu
+    // =========================================================
+
     public function show($id)
     {
         $menu = Menu::with([
@@ -66,7 +112,11 @@ class MenuController extends Controller
         return response()->json($menu);
     }
 
-    // Menambahkan menu
+
+    // =========================================================
+    // ADMIN - Menambahkan menu
+    // =========================================================
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -99,7 +149,10 @@ class MenuController extends Controller
         $menu = Menu::create($validated);
 
         // Ambil relasi restaurant dan category
-        $menu->load(['restaurant', 'category']);
+        $menu->load([
+            'restaurant',
+            'category'
+        ]);
 
         // Buat URL gambar
         $menu->image_url = $menu->image
@@ -112,7 +165,11 @@ class MenuController extends Controller
         ], 201);
     }
 
-    // Mengedit menu
+
+    // =========================================================
+    // ADMIN - Mengedit menu
+    // =========================================================
+
     public function update(Request $request, $id)
     {
         $menu = Menu::findOrFail($id);
@@ -154,7 +211,10 @@ class MenuController extends Controller
         $menu->update($validated);
 
         // Ambil relasi terbaru
-        $menu->load(['restaurant', 'category']);
+        $menu->load([
+            'restaurant',
+            'category'
+        ]);
 
         // Buat URL gambar
         $menu->image_url = $menu->image
@@ -167,7 +227,11 @@ class MenuController extends Controller
         ]);
     }
 
-    // Menghapus menu
+
+    // =========================================================
+    // ADMIN - Menghapus menu
+    // =========================================================
+
     public function destroy($id)
     {
         $menu = Menu::findOrFail($id);
