@@ -8,6 +8,7 @@ use App\Models\Table;
 use App\Models\Promo;
 use App\Models\MenuVariant;
 use App\Models\MenuAddon;
+use App\Models\Restaurant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -28,6 +29,12 @@ class OrderController extends Controller
             'customer_name' => 'nullable|string|max:255',
             'note' => 'nullable|string',
 
+            // =====================================================
+            // LOKASI CUSTOMER
+            // =====================================================
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+
             'items' => 'required|array|min:1',
             'items.*.menu_id' => 'required|exists:menus,id',
             'items.*.variant_id' => 'nullable|exists:menu_variants,id',
@@ -37,21 +44,110 @@ class OrderController extends Controller
             'items.*.note' => 'nullable|string',
         ]);
 
+        // =========================================================
+        // VALIDASI LOKASI CUSTOMER
+        // =========================================================
+
+        $restaurant = Restaurant::findOrFail(
+            $validated['restaurant_id']
+        );
+
+        // Restaurant wajib memiliki koordinat
+        if (
+            $restaurant->latitude === null ||
+            $restaurant->longitude === null
+        ) {
+            abort(
+                422,
+                'Lokasi restaurant belum diatur'
+            );
+        }
+
+        // Koordinat restaurant
+        $restaurantLatitude = (float) $restaurant->latitude;
+        $restaurantLongitude = (float) $restaurant->longitude;
+
+        // Koordinat customer
+        $customerLatitude = (float) $validated['latitude'];
+        $customerLongitude = (float) $validated['longitude'];
+
+        // Radius bumi dalam meter
+        $earthRadius = 6371000;
+
+        // Konversi latitude ke radian
+        $lat1 = deg2rad($restaurantLatitude);
+        $lat2 = deg2rad($customerLatitude);
+
+        // Selisih koordinat
+        $deltaLat = deg2rad(
+            $customerLatitude - $restaurantLatitude
+        );
+
+        $deltaLon = deg2rad(
+            $customerLongitude - $restaurantLongitude
+        );
+
+        // =========================================================
+        // HAVERSINE FORMULA
+        // Menghitung jarak customer dengan restaurant
+        // =========================================================
+
+        $a =
+            sin($deltaLat / 2) * sin($deltaLat / 2) +
+            cos($lat1) *
+            cos($lat2) *
+            sin($deltaLon / 2) *
+            sin($deltaLon / 2);
+
+        $c = 2 * atan2(
+            sqrt($a),
+            sqrt(1 - $a)
+        );
+
+        $distance = $earthRadius * $c;
+
+        // =========================================================
+        // CEK RADIUS
+        // =========================================================
+
+        if ($distance > $restaurant->location_radius) {
+            abort(
+                422,
+                'Anda berada di luar area restaurant. Silakan berada di dekat restaurant untuk melakukan pemesanan.'
+            );
+        }
+
+        // =========================================================
+        // PROSES ORDER
+        // =========================================================
+
         $order = DB::transaction(function () use ($validated) {
 
             // =====================================================
             // VALIDASI MEJA
             // =====================================================
+
             if (!empty($validated['table_id'])) {
 
-                $table = Table::findOrFail($validated['table_id']);
+                $table = Table::findOrFail(
+                    $validated['table_id']
+                );
 
-                if ($table->restaurant_id != $validated['restaurant_id']) {
-                    abort(422, 'Meja tidak sesuai dengan restaurant');
+                if (
+                    $table->restaurant_id !=
+                    $validated['restaurant_id']
+                ) {
+                    abort(
+                        422,
+                        'Meja tidak sesuai dengan restaurant'
+                    );
                 }
 
                 if (!$table->is_active) {
-                    abort(422, 'Meja sedang tidak aktif');
+                    abort(
+                        422,
+                        'Meja sedang tidak aktif'
+                    );
                 }
             }
 
@@ -61,12 +157,18 @@ class OrderController extends Controller
             // =====================================================
             // PROSES SETIAP ITEM
             // =====================================================
+
             foreach ($validated['items'] as $item) {
 
-                $menu = Menu::findOrFail($item['menu_id']);
+                $menu = Menu::findOrFail(
+                    $item['menu_id']
+                );
 
                 // Menu harus milik restaurant yang sama
-                if ($menu->restaurant_id != $validated['restaurant_id']) {
+                if (
+                    $menu->restaurant_id !=
+                    $validated['restaurant_id']
+                ) {
                     abort(
                         422,
                         "Menu {$menu->name} tidak sesuai dengan restaurant"
@@ -134,7 +236,9 @@ class OrderController extends Controller
 
                     foreach ($addonIds as $addonId) {
 
-                        $addon = MenuAddon::findOrFail($addonId);
+                        $addon = MenuAddon::findOrFail(
+                            $addonId
+                        );
 
                         // Addon harus milik menu yang sama
                         if ($addon->menu_id != $menu->id) {
@@ -206,7 +310,10 @@ class OrderController extends Controller
                 );
 
                 // Promo harus milik restaurant yang sama
-                if ($promo->restaurant_id != $validated['restaurant_id']) {
+                if (
+                    $promo->restaurant_id !=
+                    $validated['restaurant_id']
+                ) {
                     abort(
                         422,
                         'Promo tidak sesuai dengan restaurant'
@@ -415,12 +522,12 @@ class OrderController extends Controller
         $allowedTransitions = [
             'pending' => [
                 'confirmed',
-                'cancelled'
+                'cancelled',
             ],
 
             'confirmed' => [
                 'completed',
-                'cancelled'
+                'cancelled',
             ],
 
             'completed' => [],
@@ -610,3 +717,4 @@ class OrderController extends Controller
         ]);
     }
 }
+

@@ -16,6 +16,9 @@ class Restaurant extends Model
         'phone',
         'whatsapp',
         'is_active',
+        'latitude',
+        'longitude',
+        'location_radius',
     ];
 
     public function categories(): HasMany
