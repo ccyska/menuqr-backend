@@ -8,59 +8,77 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class TableController extends Controller
 {
-    // Menampilkan semua meja
-    public function index()
+    // ====================
+    // ADMIN - MENAMPILKAN MEJA
+    // ====================
+
+    public function index(Request $request)
     {
+        $admin = $request->user();
+
         $tables = Table::with('restaurant')
+            ->where('restaurant_id', $admin->restaurant_id)
             ->orderBy('name')
             ->get();
 
         return response()->json($tables);
     }
 
-    // Validasi meja berdasarkan restaurant dan kode meja
-public function validateTable($slug, $code)
-{
-    $table = Table::with('restaurant')
-        ->where('code', $code)
-        ->where('is_active', true)
-        ->whereHas('restaurant', function ($query) use ($slug) {
-            $query->where('slug', $slug)
-                ->where('is_active', true);
-        })
-        ->first();
 
-    if (!$table) {
+    // ====================
+    // PUBLIC - VALIDASI MEJA
+    // ====================
+
+    public function validateTable($slug, $code)
+    {
+        $table = Table::with('restaurant')
+            ->where('code', $code)
+            ->where('is_active', true)
+            ->whereHas('restaurant', function ($query) use ($slug) {
+                $query->where('slug', $slug)
+                    ->where('is_active', true);
+            })
+            ->first();
+
+        if (!$table) {
+            return response()->json([
+                'message' => 'Meja tidak ditemukan atau tidak aktif'
+            ], 404);
+        }
+
         return response()->json([
-            'message' => 'Meja tidak ditemukan atau tidak aktif'
-        ], 404);
+            'restaurant' => [
+                'id' => $table->restaurant->id,
+                'name' => $table->restaurant->name,
+                'slug' => $table->restaurant->slug,
+            ],
+            'table' => [
+                'id' => $table->id,
+                'name' => $table->name,
+                'code' => $table->code,
+                'is_active' => $table->is_active,
+            ],
+        ]);
     }
 
-    return response()->json([
-        'restaurant' => [
-            'id' => $table->restaurant->id,
-            'name' => $table->restaurant->name,
-            'slug' => $table->restaurant->slug,
-        ],
-        'table' => [
-            'id' => $table->id,
-            'name' => $table->name,
-            'code' => $table->code,
-            'is_active' => $table->is_active,
-        ],
-    ]);
-}
 
-    // Menambahkan meja
+    // ====================
+    // ADMIN - MENAMBAHKAN MEJA
+    // ====================
+
     public function store(Request $request)
     {
+        $admin = $request->user();
+
         $validated = $request->validate([
-            'restaurant_id' => 'required|exists:restaurants,id',
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:255',
             'qr_code' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
+
+        // Restaurant otomatis mengikuti restaurant milik admin
+        $validated['restaurant_id'] = $admin->restaurant_id;
 
         $table = Table::create($validated);
 
@@ -70,19 +88,34 @@ public function validateTable($slug, $code)
         ], 201);
     }
 
-    // Mengedit meja
+
+    // ====================
+    // ADMIN - MENGEDIT MEJA
+    // ====================
+
     public function update(Request $request, $id)
     {
-        $table = Table::findOrFail($id);
+        $admin = $request->user();
+
+        // Hanya boleh mengambil meja milik restaurant admin
+        $table = Table::where('id', $id)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$table) {
+            return response()->json([
+                'message' => 'Meja tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
-            'restaurant_id' => 'required|exists:restaurants,id',
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:255',
             'qr_code' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
 
+        // Restaurant ID tidak boleh dipindahkan lewat request
         $table->update($validated);
 
         return response()->json([
@@ -91,10 +124,25 @@ public function validateTable($slug, $code)
         ]);
     }
 
-    // Menghapus meja
-    public function destroy($id)
+
+    // ====================
+    // ADMIN - MENGHAPUS MEJA
+    // ====================
+
+    public function destroy(Request $request, $id)
     {
-        $table = Table::findOrFail($id);
+        $admin = $request->user();
+
+        // Hanya boleh menghapus meja milik restaurant admin
+        $table = Table::where('id', $id)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$table) {
+            return response()->json([
+                'message' => 'Meja tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $table->delete();
 
@@ -103,12 +151,28 @@ public function validateTable($slug, $code)
         ]);
     }
 
-    // Generate QR Code
-    public function generateQr($id)
-    {
-        $table = Table::with('restaurant')->findOrFail($id);
 
-        // Ambil URL frontend dari file .env
+    // ====================
+    // ADMIN - GENERATE QR CODE
+    // ====================
+
+    public function generateQr(Request $request, $id)
+    {
+        $admin = $request->user();
+
+        // Hanya bisa generate QR meja milik restaurant admin
+        $table = Table::with('restaurant')
+            ->where('id', $id)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$table) {
+            return response()->json([
+                'message' => 'Meja tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
+
+        // Ambil URL frontend dari .env
         $url = env('FRONTEND_URL') . '/menu/'
             . $table->restaurant->slug
             . '?table='
@@ -128,12 +192,28 @@ public function validateTable($slug, $code)
             ->header('Content-Type', 'image/svg+xml');
     }
 
-    // Download QR Code
-    public function downloadQr($id)
-    {
-        $table = Table::with('restaurant')->findOrFail($id);
 
-        // Ambil URL frontend dari file .env
+    // ====================
+    // ADMIN - DOWNLOAD QR CODE
+    // ====================
+
+    public function downloadQr(Request $request, $id)
+    {
+        $admin = $request->user();
+
+        // Hanya bisa download QR meja milik restaurant admin
+        $table = Table::with('restaurant')
+            ->where('id', $id)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$table) {
+            return response()->json([
+                'message' => 'Meja tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
+
+        // Ambil URL frontend dari .env
         $url = env('FRONTEND_URL') . '/menu/'
             . $table->restaurant->slug
             . '?table='

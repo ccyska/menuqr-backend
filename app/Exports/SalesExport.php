@@ -9,10 +9,32 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 
 class SalesExport implements FromCollection, WithHeadings
 {
+    protected $restaurantId;
+    protected $from;
+    protected $to;
+
+    public function __construct($restaurantId, $from = null, $to = null)
+    {
+        $this->restaurantId = $restaurantId;
+        $this->from = $from;
+        $this->to = $to;
+    }
+
     public function collection(): Collection
     {
-        return Order::with(['restaurant', 'table'])
-            ->where('status', 'completed')
+        $query = Order::with(['restaurant', 'table'])
+            ->where('restaurant_id', $this->restaurantId)
+            ->where('status', 'completed');
+
+        if ($this->from) {
+            $query->whereDate('created_at', '>=', $this->from);
+        }
+
+        if ($this->to) {
+            $query->whereDate('created_at', '<=', $this->to);
+        }
+
+        return $query
             ->latest()
             ->get()
             ->map(function ($order) {

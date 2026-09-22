@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Admin;
 
 class Restaurant extends Model
 {
@@ -20,6 +22,11 @@ class Restaurant extends Model
         'longitude',
         'location_radius',
     ];
+
+    public function admin(): HasOne
+{
+    return $this->hasOne(Admin::class);
+}
 
     public function categories(): HasMany
     {

@@ -48,18 +48,21 @@ class MenuController extends Controller
 
 
     // =========================================================
-    // ADMIN - Menampilkan SEMUA menu
+    // ADMIN - Menampilkan SEMUA menu milik restaurant admin
     // Termasuk menu yang sedang habis / tidak tersedia
     // =========================================================
 
     public function adminIndex(Request $request)
     {
+        $admin = $request->user();
+
         $query = Menu::with([
             'restaurant',
             'category',
             'variants',
             'addons'
-        ]);
+        ])
+        ->where('restaurant_id', $admin->restaurant_id);
 
         // Pencarian berdasarkan nama atau deskripsi
         if ($request->filled('search')) {
@@ -119,6 +122,8 @@ class MenuController extends Controller
 
     public function store(Request $request)
     {
+        $admin = $request->user();
+
         $validated = $request->validate([
             'restaurant_id' => 'required|exists:restaurants,id',
             'category_id' => 'required|exists:categories,id',
@@ -131,12 +136,24 @@ class MenuController extends Controller
             'sort_order' => 'integer',
         ]);
 
-        // Pastikan category berasal dari restaurant yang sama
-        $category = Category::findOrFail($validated['category_id']);
+        // =====================================================
+        // PASTIKAN RESTAURANT SESUAI DENGAN ADMIN
+        // =====================================================
 
-        if ($category->restaurant_id != $validated['restaurant_id']) {
+        if ($validated['restaurant_id'] != $admin->restaurant_id) {
             return response()->json([
-                'message' => 'Category tidak sesuai dengan restaurant'
+                'message' => 'Anda tidak memiliki akses ke restaurant ini'
+            ], 403);
+        }
+
+        // Pastikan category berasal dari restaurant yang sama
+        $category = Category::findOrFail(
+            $validated['category_id']
+        );
+
+        if ($category->restaurant_id != $admin->restaurant_id) {
+            return response()->json([
+                'message' => 'Category tidak sesuai dengan restaurant Anda'
             ], 422);
         }
 
@@ -172,7 +189,13 @@ class MenuController extends Controller
 
     public function update(Request $request, $id)
     {
-        $menu = Menu::findOrFail($id);
+        $admin = $request->user();
+
+        // Hanya boleh mengambil menu milik restaurant admin
+        $menu = Menu::where(
+            'restaurant_id',
+            $admin->restaurant_id
+        )->findOrFail($id);
 
         $validated = $request->validate([
             'restaurant_id' => 'required|exists:restaurants,id',
@@ -186,12 +209,24 @@ class MenuController extends Controller
             'sort_order' => 'integer',
         ]);
 
-        // Pastikan category berasal dari restaurant yang sama
-        $category = Category::findOrFail($validated['category_id']);
+        // =====================================================
+        // PASTIKAN RESTAURANT SESUAI DENGAN ADMIN
+        // =====================================================
 
-        if ($category->restaurant_id != $validated['restaurant_id']) {
+        if ($validated['restaurant_id'] != $admin->restaurant_id) {
             return response()->json([
-                'message' => 'Category tidak sesuai dengan restaurant'
+                'message' => 'Anda tidak memiliki akses ke restaurant ini'
+            ], 403);
+        }
+
+        // Pastikan category berasal dari restaurant yang sama
+        $category = Category::findOrFail(
+            $validated['category_id']
+        );
+
+        if ($category->restaurant_id != $admin->restaurant_id) {
+            return response()->json([
+                'message' => 'Category tidak sesuai dengan restaurant Anda'
             ], 422);
         }
 
@@ -200,7 +235,9 @@ class MenuController extends Controller
 
             // Hapus gambar lama
             if ($menu->image) {
-                Storage::disk('public')->delete($menu->image);
+                Storage::disk('public')->delete(
+                    $menu->image
+                );
             }
 
             // Simpan gambar baru
@@ -232,13 +269,21 @@ class MenuController extends Controller
     // ADMIN - Menghapus menu
     // =========================================================
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $menu = Menu::findOrFail($id);
+        $admin = $request->user();
+
+        // Hanya boleh menghapus menu milik restaurant admin
+        $menu = Menu::where(
+            'restaurant_id',
+            $admin->restaurant_id
+        )->findOrFail($id);
 
         // Hapus gambar menu
         if ($menu->image) {
-            Storage::disk('public')->delete($menu->image);
+            Storage::disk('public')->delete(
+                $menu->image
+            );
         }
 
         $menu->delete();

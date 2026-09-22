@@ -7,7 +7,11 @@ use Illuminate\Http\Request;
 
 class RestaurantController extends Controller
 {
-    // Menampilkan semua restoran
+    // ==========================================
+    // PUBLIC
+    // ==========================================
+
+    // Menampilkan semua restoran aktif
     public function index()
     {
         $restaurants = Restaurant::where('is_active', true)->get();
@@ -25,20 +29,22 @@ class RestaurantController extends Controller
                     $query->where('is_active', true)
                         ->orderBy('sort_order');
                 },
-               'menus' => function ($query) {
-    $query->where('is_available', true)
-        ->with([
-            'variants' => function ($query) {
-                $query->where('is_active', true)
-                    ->orderBy('sort_order');
-            },
-            'addons' => function ($query) {
-                $query->where('is_active', true)
-                    ->orderBy('sort_order');
-            },
-        ])
-        ->orderBy('sort_order');
-}
+
+                'menus' => function ($query) {
+                    $query->where('is_available', true)
+                        ->with([
+                            'variants' => function ($query) {
+                                $query->where('is_active', true)
+                                    ->orderBy('sort_order');
+                            },
+
+                            'addons' => function ($query) {
+                                $query->where('is_active', true)
+                                    ->orderBy('sort_order');
+                            },
+                        ])
+                        ->orderBy('sort_order');
+                },
             ])
             ->firstOrFail();
 
@@ -55,9 +61,24 @@ class RestaurantController extends Controller
         ]);
     }
 
+
+    // ==========================================
+    // ADMIN
+    // ==========================================
+
     // Menambahkan restoran
     public function store(Request $request)
     {
+        $admin = $request->user();
+
+        // Admin yang sudah memiliki restoran
+        // tidak boleh membuat restoran lain
+        if ($admin->restaurant_id) {
+            return response()->json([
+                'message' => 'Admin sudah memiliki restaurant'
+            ], 403);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:restaurants,slug',
@@ -71,15 +92,32 @@ class RestaurantController extends Controller
 
         $restaurant = Restaurant::create($validated);
 
+        // Hubungkan admin dengan restaurant yang baru dibuat
+        $admin->update([
+            'restaurant_id' => $restaurant->id,
+        ]);
+
         return response()->json([
             'message' => 'Restaurant berhasil ditambahkan',
             'data' => $restaurant
         ], 201);
     }
 
+
+    // Memperbarui restaurant milik admin
     public function update(Request $request, $id)
     {
-        $restaurant = Restaurant::findOrFail($id);
+        $admin = $request->user();
+
+        $restaurant = Restaurant::where('id', $id)
+            ->where('id', $admin->restaurant_id)
+            ->first();
+
+        if (!$restaurant) {
+            return response()->json([
+                'message' => 'Restaurant tidak ditemukan atau bukan milik Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -100,11 +138,28 @@ class RestaurantController extends Controller
         ]);
     }
 
-    public function destroy($id)
+
+    // Menghapus restaurant milik admin
+    public function destroy(Request $request, $id)
     {
-        $restaurant = Restaurant::findOrFail($id);
+        $admin = $request->user();
+
+        $restaurant = Restaurant::where('id', $id)
+            ->where('id', $admin->restaurant_id)
+            ->first();
+
+        if (!$restaurant) {
+            return response()->json([
+                'message' => 'Restaurant tidak ditemukan atau bukan milik Anda'
+            ], 404);
+        }
 
         $restaurant->delete();
+
+        // Putuskan hubungan admin dengan restaurant
+        $admin->update([
+            'restaurant_id' => null,
+        ]);
 
         return response()->json([
             'message' => 'Restaurant berhasil dihapus'

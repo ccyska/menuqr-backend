@@ -23,15 +23,12 @@ class OrderController extends Controller
         $validated = $request->validate([
             'restaurant_id' => 'required|exists:restaurants,id',
             'table_id' => 'nullable|exists:tables,id',
-
             'promo_id' => 'nullable|exists:promos,id',
 
             'customer_name' => 'nullable|string|max:255',
             'note' => 'nullable|string',
 
-            // =====================================================
             // LOKASI CUSTOMER
-            // =====================================================
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
 
@@ -52,33 +49,24 @@ class OrderController extends Controller
             $validated['restaurant_id']
         );
 
-        // Restaurant wajib memiliki koordinat
         if (
             $restaurant->latitude === null ||
             $restaurant->longitude === null
         ) {
-            abort(
-                422,
-                'Lokasi restaurant belum diatur'
-            );
+            abort(422, 'Lokasi restaurant belum diatur');
         }
 
-        // Koordinat restaurant
         $restaurantLatitude = (float) $restaurant->latitude;
         $restaurantLongitude = (float) $restaurant->longitude;
 
-        // Koordinat customer
         $customerLatitude = (float) $validated['latitude'];
         $customerLongitude = (float) $validated['longitude'];
 
-        // Radius bumi dalam meter
         $earthRadius = 6371000;
 
-        // Konversi latitude ke radian
         $lat1 = deg2rad($restaurantLatitude);
         $lat2 = deg2rad($customerLatitude);
 
-        // Selisih koordinat
         $deltaLat = deg2rad(
             $customerLatitude - $restaurantLatitude
         );
@@ -87,11 +75,7 @@ class OrderController extends Controller
             $customerLongitude - $restaurantLongitude
         );
 
-        // =========================================================
         // HAVERSINE FORMULA
-        // Menghitung jarak customer dengan restaurant
-        // =========================================================
-
         $a =
             sin($deltaLat / 2) * sin($deltaLat / 2) +
             cos($lat1) *
@@ -106,10 +90,7 @@ class OrderController extends Controller
 
         $distance = $earthRadius * $c;
 
-        // =========================================================
         // CEK RADIUS
-        // =========================================================
-
         if ($distance > $restaurant->location_radius) {
             abort(
                 422,
@@ -410,13 +391,17 @@ class OrderController extends Controller
                 'restaurant_id' => $validated['restaurant_id'],
                 'table_id' => $validated['table_id'] ?? null,
                 'promo_id' => $promo?->id,
+
                 'order_code' =>
                     'ORD-' .
                     strtoupper(Str::random(8)),
+
                 'customer_name' =>
                     $validated['customer_name'] ?? null,
+
                 'note' =>
                     $validated['note'] ?? null,
+
                 'total' => $total,
                 'discount' => $discount,
                 'status' => 'pending',
@@ -454,8 +439,10 @@ class OrderController extends Controller
 
     // =========================================================
     // DETAIL PESANAN
+    // CUSTOMER TIDAK PERLU LOGIN
+    // AKSES MENGGUNAKAN ORDER CODE
     // =========================================================
-    public function show($id)
+    public function show($orderCode)
     {
         $order = Order::with([
             'restaurant',
@@ -463,7 +450,9 @@ class OrderController extends Controller
             'promo',
             'items.menu',
             'items.variant',
-        ])->findOrFail($id);
+        ])
+        ->where('order_code', $orderCode)
+        ->firstOrFail();
 
         return response()->json([
             'data' => $order,
@@ -474,8 +463,10 @@ class OrderController extends Controller
     // =========================================================
     // SEMUA PESANAN ADMIN
     // =========================================================
-    public function index()
+    public function index(Request $request)
     {
+        $admin = $request->user();
+
         $orders = Order::with([
             'restaurant',
             'table',
@@ -483,6 +474,7 @@ class OrderController extends Controller
             'items.menu',
             'items.variant',
         ])
+        ->where('restaurant_id', $admin->restaurant_id)
         ->latest()
         ->get();
 
@@ -502,7 +494,10 @@ class OrderController extends Controller
                 'required|in:pending,confirmed,completed,cancelled',
         ]);
 
-        $order = Order::findOrFail($id);
+        $order = Order::where(
+            'restaurant_id',
+            $request->user()->restaurant_id
+        )->findOrFail($id);
 
         $currentStatus = $order->status;
         $newStatus = $validated['status'];
@@ -571,8 +566,10 @@ class OrderController extends Controller
 
     // =========================================================
     // WHATSAPP
+    // CUSTOMER TIDAK PERLU LOGIN
+    // AKSES MENGGUNAKAN ORDER CODE
     // =========================================================
-    public function whatsapp($id)
+    public function whatsapp($orderCode)
     {
         $order = Order::with([
             'restaurant',
@@ -580,7 +577,9 @@ class OrderController extends Controller
             'promo',
             'items.menu',
             'items.variant',
-        ])->findOrFail($id);
+        ])
+        ->where('order_code', $orderCode)
+        ->firstOrFail();
 
         $message =
             "PESANAN BARU\n\n";
@@ -717,4 +716,3 @@ class OrderController extends Controller
         ]);
     }
 }
-

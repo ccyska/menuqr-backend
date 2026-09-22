@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class MenuAddonController extends Controller
 {
-    // Menampilkan semua addon
+    // PUBLIC
     public function index($menuId)
     {
         $menu = Menu::findOrFail($menuId);
@@ -21,10 +21,20 @@ class MenuAddonController extends Controller
         return response()->json($addons);
     }
 
-    // Menambahkan addon
+    // ADMIN
     public function store(Request $request, $menuId)
     {
-        $menu = Menu::findOrFail($menuId);
+        $admin = $request->user();
+
+        $menu = Menu::where('id', $menuId)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$menu) {
+            return response()->json([
+                'message' => 'Menu tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -41,10 +51,22 @@ class MenuAddonController extends Controller
         ], 201);
     }
 
-    // Mengubah addon
+    // ADMIN
     public function update(Request $request, $id)
     {
-        $addon = MenuAddon::findOrFail($id);
+        $admin = $request->user();
+
+        $addon = MenuAddon::where('id', $id)
+            ->whereHas('menu', function ($query) use ($admin) {
+                $query->where('restaurant_id', $admin->restaurant_id);
+            })
+            ->first();
+
+        if (!$addon) {
+            return response()->json([
+                'message' => 'Addon tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -61,10 +83,22 @@ class MenuAddonController extends Controller
         ]);
     }
 
-    // Menghapus addon
-    public function destroy($id)
+    // ADMIN
+    public function destroy(Request $request, $id)
     {
-        $addon = MenuAddon::findOrFail($id);
+        $admin = $request->user();
+
+        $addon = MenuAddon::where('id', $id)
+            ->whereHas('menu', function ($query) use ($admin) {
+                $query->where('restaurant_id', $admin->restaurant_id);
+            })
+            ->first();
+
+        if (!$addon) {
+            return response()->json([
+                'message' => 'Addon tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $addon->delete();
 
@@ -73,3 +107,4 @@ class MenuAddonController extends Controller
         ]);
     }
 }
+

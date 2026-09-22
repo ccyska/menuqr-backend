@@ -46,8 +46,8 @@ Route::get('/restaurants/{slug}/tables/{code}', [TableController::class, 'valida
 
 // Order customer
 Route::post('/orders', [OrderController::class, 'store']);
-Route::get('/orders/{id}', [OrderController::class, 'show']);
-Route::get('/orders/{id}/whatsapp', [OrderController::class, 'whatsapp']);
+Route::get('/orders/{orderCode}', [OrderController::class, 'show']);
+Route::get('/orders/{orderCode}/whatsapp', [OrderController::class, 'whatsapp']);
 
 
 // ====================
@@ -62,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/admin/categories', [CategoryController::class, 'adminIndex']);
 
 
     // ====================

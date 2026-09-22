@@ -11,25 +11,40 @@ use Barryvdh\DomPDF\Facade\Pdf;
 class ReportController extends Controller
 {
     // Dashboard penjualan
-    public function dashboard()
+    public function dashboard(Request $request)
     {
+        $admin = $request->user();
+
+        $query = Order::where('restaurant_id', $admin->restaurant_id);
+
         return response()->json([
-            'total_orders' => Order::count(),
+            'total_orders' => (clone $query)->count(),
 
-            'pending_orders' => Order::where('status', 'pending')->count(),
+            'pending_orders' => (clone $query)
+                ->where('status', 'pending')
+                ->count(),
 
-            'completed_orders' => Order::where('status', 'completed')->count(),
+            'completed_orders' => (clone $query)
+                ->where('status', 'completed')
+                ->count(),
 
-            'cancelled_orders' => Order::where('status', 'cancelled')->count(),
+            'cancelled_orders' => (clone $query)
+                ->where('status', 'cancelled')
+                ->count(),
 
-            'total_sales' => Order::where('status', 'completed')->sum('total'),
+            'total_sales' => (clone $query)
+                ->where('status', 'completed')
+                ->sum('total'),
         ]);
     }
 
     // Laporan penjualan
     public function sales(Request $request)
     {
-        $query = Order::where('status', 'completed');
+        $admin = $request->user();
+
+        $query = Order::where('restaurant_id', $admin->restaurant_id)
+            ->where('status', 'completed');
 
         if ($request->filled('from')) {
             $query->whereDate('created_at', '>=', $request->from);
@@ -52,10 +67,12 @@ class ReportController extends Controller
     }
 
     // Export Excel
-    public function exportExcel()
+    public function exportExcel(Request $request)
     {
+        $admin = $request->user();
+
         return Excel::download(
-            new SalesExport,
+            new SalesExport($admin->restaurant_id, $request->from, $request->to),
             'laporan-penjualan.xlsx'
         );
     }
@@ -63,7 +80,10 @@ class ReportController extends Controller
     // Export PDF
     public function exportPdf(Request $request)
     {
-        $query = Order::where('status', 'completed')
+        $admin = $request->user();
+
+        $query = Order::where('restaurant_id', $admin->restaurant_id)
+            ->where('status', 'completed')
             ->with(['restaurant', 'table']);
 
         if ($request->filled('from')) {
@@ -79,7 +99,6 @@ class ReportController extends Controller
             ->get();
 
         $totalOrders = $orders->count();
-
         $totalSales = $orders->sum('total');
 
         $pdf = Pdf::loadView('reports.sales', [
@@ -91,3 +110,4 @@ class ReportController extends Controller
         return $pdf->download('laporan-penjualan.pdf');
     }
 }
+

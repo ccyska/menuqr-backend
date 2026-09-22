@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class MenuVariantController extends Controller
 {
-    // Menampilkan semua variant
+    // PUBLIC
     public function index($menuId)
     {
         $menu = Menu::findOrFail($menuId);
@@ -21,10 +21,20 @@ class MenuVariantController extends Controller
         return response()->json($variants);
     }
 
-    // Menambahkan variant
+    // ADMIN
     public function store(Request $request, $menuId)
     {
-        $menu = Menu::findOrFail($menuId);
+        $admin = $request->user();
+
+        $menu = Menu::where('id', $menuId)
+            ->where('restaurant_id', $admin->restaurant_id)
+            ->first();
+
+        if (!$menu) {
+            return response()->json([
+                'message' => 'Menu tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -41,10 +51,22 @@ class MenuVariantController extends Controller
         ], 201);
     }
 
-    // Mengubah variant
+    // ADMIN
     public function update(Request $request, $id)
     {
-        $variant = MenuVariant::findOrFail($id);
+        $admin = $request->user();
+
+        $variant = MenuVariant::where('id', $id)
+            ->whereHas('menu', function ($query) use ($admin) {
+                $query->where('restaurant_id', $admin->restaurant_id);
+            })
+            ->first();
+
+        if (!$variant) {
+            return response()->json([
+                'message' => 'Variant tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -61,10 +83,22 @@ class MenuVariantController extends Controller
         ]);
     }
 
-    // Menghapus variant
-    public function destroy($id)
+    // ADMIN
+    public function destroy(Request $request, $id)
     {
-        $variant = MenuVariant::findOrFail($id);
+        $admin = $request->user();
+
+        $variant = MenuVariant::where('id', $id)
+            ->whereHas('menu', function ($query) use ($admin) {
+                $query->where('restaurant_id', $admin->restaurant_id);
+            })
+            ->first();
+
+        if (!$variant) {
+            return response()->json([
+                'message' => 'Variant tidak ditemukan atau bukan milik restaurant Anda'
+            ], 404);
+        }
 
         $variant->delete();
 
