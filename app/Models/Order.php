@@ -15,8 +15,9 @@ class Order extends Model
         'customer_name',
         'note',
         'total',
-        'status',
-        'promo_id',
+      'status',
+'payment_status',
+'promo_id',
         'discount',
     ];
 

@@ -115,7 +115,6 @@ class TableController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        // Restaurant ID tidak boleh dipindahkan lewat request
         $table->update($validated);
 
         return response()->json([
@@ -232,4 +231,3 @@ class TableController extends Controller
             );
     }
 }
-

@@ -110,20 +110,24 @@ class OrderController extends Controller
 
             if (!empty($validated['table_id'])) {
 
-                $table = Table::findOrFail(
+                $table = Table::where(
+                    'id',
                     $validated['table_id']
-                );
+                )
+                    ->where(
+                        'restaurant_id',
+                        $validated['restaurant_id']
+                    )
+                    ->first();
 
-                if (
-                    $table->restaurant_id !=
-                    $validated['restaurant_id']
-                ) {
+                if (!$table) {
                     abort(
                         422,
                         'Meja tidak sesuai dengan restaurant'
                     );
                 }
 
+                // Meja harus aktif
                 if (!$table->is_active) {
                     abort(
                         422,
@@ -405,6 +409,7 @@ class OrderController extends Controller
                 'total' => $total,
                 'discount' => $discount,
                 'status' => 'pending',
+                'payment_status' => 'unpaid',
             ]);
 
             // =====================================================
@@ -474,7 +479,10 @@ class OrderController extends Controller
             'items.menu',
             'items.variant',
         ])
-        ->where('restaurant_id', $admin->restaurant_id)
+        ->where(
+            'restaurant_id',
+            $admin->restaurant_id
+        )
         ->latest()
         ->get();
 
@@ -497,7 +505,8 @@ class OrderController extends Controller
         $order = Order::where(
             'restaurant_id',
             $request->user()->restaurant_id
-        )->findOrFail($id);
+        )
+        ->findOrFail($id);
 
         $currentStatus = $order->status;
         $newStatus = $validated['status'];
@@ -544,9 +553,29 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $order->update([
-            'status' => $newStatus,
-        ]);
+        // =========================================================
+        // UPDATE STATUS ORDER
+        // =========================================================
+
+        DB::transaction(function () use (
+            $order,
+            $newStatus
+        ) {
+
+            // Lock order supaya perubahan status aman
+            $lockedOrder = Order::where(
+                'id',
+                $order->id
+            )
+                ->lockForUpdate()
+                ->first();
+
+            $lockedOrder->update([
+                'status' => $newStatus,
+            ]);
+        });
+
+        $order->refresh();
 
         $order->load([
             'restaurant',
@@ -559,6 +588,77 @@ class OrderController extends Controller
         return response()->json([
             'message' =>
                 'Status pesanan berhasil diperbarui',
+            'data' => $order,
+        ]);
+    }
+
+
+    // =========================================================
+    // UPDATE STATUS PEMBAYARAN
+    // ADMIN / KASIR
+    // =========================================================
+    public function updatePaymentStatus(
+        Request $request,
+        $id
+    ) {
+        $validated = $request->validate([
+            'payment_status' =>
+                'required|in:unpaid,paid',
+        ]);
+
+        $order = Order::where(
+            'restaurant_id',
+            $request->user()->restaurant_id
+        )
+        ->findOrFail($id);
+
+        // =========================================================
+        // PEMBAYARAN HANYA BISA DILAKUKAN
+        // JIKA PESANAN SUDAH SELESAI
+        // =========================================================
+        if (
+            $validated['payment_status'] === 'paid' &&
+            $order->status !== 'completed'
+        ) {
+            return response()->json([
+                'message' =>
+                    'Pesanan harus berstatus completed sebelum pembayaran dapat dilakukan.',
+            ], 422);
+        }
+
+        // Status pembayaran sama
+        if (
+            $order->payment_status ===
+            $validated['payment_status']
+        ) {
+            return response()->json([
+                'message' =>
+                    'Status pembayaran sudah ' .
+                    $validated['payment_status'],
+                'data' => $order,
+            ]);
+        }
+
+        // Pembayaran hanya boleh berubah
+        // dari unpaid menjadi paid
+        if (
+            $order->payment_status === 'paid' &&
+            $validated['payment_status'] === 'unpaid'
+        ) {
+            return response()->json([
+                'message' =>
+                    'Pembayaran yang sudah lunas tidak dapat dibatalkan',
+            ], 422);
+        }
+
+        $order->update([
+            'payment_status' =>
+                $validated['payment_status'],
+        ]);
+
+        return response()->json([
+            'message' =>
+                'Status pembayaran berhasil diperbarui',
             'data' => $order,
         ]);
     }

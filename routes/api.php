@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/orders', [OrderController::class, 'index']);
     Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::put('/orders/{id}/payment-status', [OrderController::class, 'updatePaymentStatus']);
 
 
  // ====================
