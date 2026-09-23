@@ -8,13 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Table extends Model
 {
-    protected $fillable = [
-        'restaurant_id',
-        'name',
-        'code',
-        'qr_code',
-        'is_active',
-    ];
+   protected $fillable = [
+    'restaurant_id',
+    'name',
+    'code',
+    'capacity',
+    'qr_code',
+    'is_active',
+];
 
     public function restaurant(): BelongsTo
     {

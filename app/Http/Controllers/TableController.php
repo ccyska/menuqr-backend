@@ -56,6 +56,7 @@ class TableController extends Controller
                 'id' => $table->id,
                 'name' => $table->name,
                 'code' => $table->code,
+                'capacity' => $table->capacity,
                 'is_active' => $table->is_active,
             ],
         ]);
@@ -72,7 +73,8 @@ class TableController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:255',
+            'code' => 'required|string|max:255|unique:tables,code',
+            'capacity' => 'required|integer|min:1|max:10',
             'qr_code' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
@@ -111,6 +113,7 @@ class TableController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:255',
+            'capacity' => 'required|integer|min:1|max:10',
             'qr_code' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
