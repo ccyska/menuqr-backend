@@ -15,9 +15,9 @@ class Order extends Model
         'customer_name',
         'note',
         'total',
-      'status',
-'payment_status',
-'promo_id',
+        'status',
+        'payment_status',
+        'promo_id',
         'discount',
     ];
 
@@ -43,8 +43,10 @@ class Order extends Model
     {
         return $this->hasMany(OrderItem::class);
     }
+
+    // Order dapat menggunakan promo
     public function promo(): BelongsTo
-{
-    return $this->belongsTo(Promo::class);
-}
+    {
+        return $this->belongsTo(Promo::class);
+    }
 }

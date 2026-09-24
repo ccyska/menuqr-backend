@@ -17,6 +17,7 @@ class OrderController extends Controller
 {
     // =========================================================
     // MEMBUAT PESANAN
+    // CUSTOMER
     // =========================================================
     public function store(Request $request)
     {
@@ -32,6 +33,7 @@ class OrderController extends Controller
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
 
+            // ITEMS
             'items' => 'required|array|min:1',
             'items.*.menu_id' => 'required|exists:menus,id',
             'items.*.variant_id' => 'nullable|exists:menu_variants,id',
@@ -53,7 +55,10 @@ class OrderController extends Controller
             $restaurant->latitude === null ||
             $restaurant->longitude === null
         ) {
-            abort(422, 'Lokasi restaurant belum diatur');
+            abort(
+                422,
+                'Lokasi restaurant belum diatur'
+            );
         }
 
         $restaurantLatitude = (float) $restaurant->latitude;
@@ -75,7 +80,10 @@ class OrderController extends Controller
             $customerLongitude - $restaurantLongitude
         );
 
+        // =========================================================
         // HAVERSINE FORMULA
+        // =========================================================
+
         $a =
             sin($deltaLat / 2) * sin($deltaLat / 2) +
             cos($lat1) *
@@ -90,7 +98,10 @@ class OrderController extends Controller
 
         $distance = $earthRadius * $c;
 
+        // =========================================================
         // CEK RADIUS
+        // =========================================================
+
         if ($distance > $restaurant->location_radius) {
             abort(
                 422,
@@ -127,7 +138,6 @@ class OrderController extends Controller
                     );
                 }
 
-                // Meja harus aktif
                 if (!$table->is_active) {
                     abort(
                         422,
@@ -149,7 +159,10 @@ class OrderController extends Controller
                     $item['menu_id']
                 );
 
-                // Menu harus milik restaurant yang sama
+                // -------------------------------------------------
+                // MENU HARUS MILIK RESTAURANT YANG SAMA
+                // -------------------------------------------------
+
                 if (
                     $menu->restaurant_id !=
                     $validated['restaurant_id']
@@ -160,7 +173,10 @@ class OrderController extends Controller
                     );
                 }
 
-                // Menu harus tersedia
+                // -------------------------------------------------
+                // MENU HARUS TERSEDIA
+                // -------------------------------------------------
+
                 if (!$menu->is_available) {
                     abort(
                         422,
@@ -271,12 +287,15 @@ class OrderController extends Controller
                 $itemsData[] = [
                     'menu_id' => $menu->id,
                     'variant_id' => $variant?->id,
+
                     'addons' => !empty($addons)
                         ? $addons
                         : null,
+
                     'quantity' => $quantity,
                     'price' => $unitPrice,
                     'subtotal' => $subtotal,
+
                     'note' => $item['note'] ?? null,
                 ];
             }
@@ -313,7 +332,7 @@ class OrderController extends Controller
                     );
                 }
 
-                // Belum mulai
+                // Promo belum mulai
                 if (
                     $promo->starts_at &&
                     now()->lt($promo->starts_at)
@@ -324,7 +343,7 @@ class OrderController extends Controller
                     );
                 }
 
-                // Sudah berakhir
+                // Promo sudah berakhir
                 if (
                     $promo->ends_at &&
                     now()->gt($promo->ends_at)
@@ -393,8 +412,12 @@ class OrderController extends Controller
 
             $order = Order::create([
                 'restaurant_id' => $validated['restaurant_id'],
-                'table_id' => $validated['table_id'] ?? null,
-                'promo_id' => $promo?->id,
+
+                'table_id' =>
+                    $validated['table_id'] ?? null,
+
+                'promo_id' =>
+                    $promo?->id,
 
                 'order_code' =>
                     'ORD-' .
@@ -407,8 +430,15 @@ class OrderController extends Controller
                     $validated['note'] ?? null,
 
                 'total' => $total,
+
                 'discount' => $discount,
+
+                // Kolom lama tetap disimpan
+                // agar tidak perlu mengubah database.
+                // Customer tidak menggunakan status ini.
                 'status' => 'pending',
+
+                // Pembayaran dilakukan di kasir
                 'payment_status' => 'unpaid',
             ]);
 
@@ -435,9 +465,21 @@ class OrderController extends Controller
             'items.variant',
         ]);
 
+        // =========================================================
+        // RESPONSE PESANAN BERHASIL
+        // =========================================================
+
         return response()->json([
-            'message' => 'Pesanan berhasil dibuat',
+            'message' =>
+                'Pesanan berhasil dibuat. Silakan lanjut melakukan pembayaran di kasir.',
+
             'data' => $order,
+
+            'payment' => [
+                'status' => 'unpaid',
+                'message' =>
+                    'Silakan lanjut melakukan pembayaran di kasir.',
+            ],
         ], 201);
     }
 
@@ -447,6 +489,7 @@ class OrderController extends Controller
     // CUSTOMER TIDAK PERLU LOGIN
     // AKSES MENGGUNAKAN ORDER CODE
     // =========================================================
+
     public function show($orderCode)
     {
         $order = Order::with([
@@ -456,8 +499,11 @@ class OrderController extends Controller
             'items.menu',
             'items.variant',
         ])
-        ->where('order_code', $orderCode)
-        ->firstOrFail();
+            ->where(
+                'order_code',
+                $orderCode
+            )
+            ->firstOrFail();
 
         return response()->json([
             'data' => $order,
@@ -468,6 +514,7 @@ class OrderController extends Controller
     // =========================================================
     // SEMUA PESANAN ADMIN
     // =========================================================
+
     public function index(Request $request)
     {
         $admin = $request->user();
@@ -479,117 +526,14 @@ class OrderController extends Controller
             'items.menu',
             'items.variant',
         ])
-        ->where(
-            'restaurant_id',
-            $admin->restaurant_id
-        )
-        ->latest()
-        ->get();
+            ->where(
+                'restaurant_id',
+                $admin->restaurant_id
+            )
+            ->latest()
+            ->get();
 
         return response()->json($orders);
-    }
-
-
-    // =========================================================
-    // UPDATE STATUS PESANAN
-    // =========================================================
-    public function updateStatus(
-        Request $request,
-        $id
-    ) {
-        $validated = $request->validate([
-            'status' =>
-                'required|in:pending,confirmed,completed,cancelled',
-        ]);
-
-        $order = Order::where(
-            'restaurant_id',
-            $request->user()->restaurant_id
-        )
-        ->findOrFail($id);
-
-        $currentStatus = $order->status;
-        $newStatus = $validated['status'];
-
-        // Status sama
-        if ($currentStatus === $newStatus) {
-
-            return response()->json([
-                'message' =>
-                    'Status pesanan sudah ' .
-                    $newStatus,
-                'data' => $order,
-            ]);
-        }
-
-        // Aturan perubahan status
-        $allowedTransitions = [
-            'pending' => [
-                'confirmed',
-                'cancelled',
-            ],
-
-            'confirmed' => [
-                'completed',
-                'cancelled',
-            ],
-
-            'completed' => [],
-
-            'cancelled' => [],
-        ];
-
-        if (
-            !in_array(
-                $newStatus,
-                $allowedTransitions[$currentStatus] ?? []
-            )
-        ) {
-
-            return response()->json([
-                'message' =>
-                    "Status tidak dapat diubah dari " .
-                    "{$currentStatus} menjadi {$newStatus}",
-            ], 422);
-        }
-
-        // =========================================================
-        // UPDATE STATUS ORDER
-        // =========================================================
-
-        DB::transaction(function () use (
-            $order,
-            $newStatus
-        ) {
-
-            // Lock order supaya perubahan status aman
-            $lockedOrder = Order::where(
-                'id',
-                $order->id
-            )
-                ->lockForUpdate()
-                ->first();
-
-            $lockedOrder->update([
-                'status' => $newStatus,
-            ]);
-        });
-
-        $order->refresh();
-
-        $order->load([
-            'restaurant',
-            'table',
-            'promo',
-            'items.menu',
-            'items.variant',
-        ]);
-
-        return response()->json([
-            'message' =>
-                'Status pesanan berhasil diperbarui',
-            'data' => $order,
-        ]);
     }
 
 
@@ -597,6 +541,7 @@ class OrderController extends Controller
     // UPDATE STATUS PEMBAYARAN
     // ADMIN / KASIR
     // =========================================================
+
     public function updatePaymentStatus(
         Request $request,
         $id
@@ -610,23 +555,12 @@ class OrderController extends Controller
             'restaurant_id',
             $request->user()->restaurant_id
         )
-        ->findOrFail($id);
+            ->findOrFail($id);
 
         // =========================================================
-        // PEMBAYARAN HANYA BISA DILAKUKAN
-        // JIKA PESANAN SUDAH SELESAI
+        // STATUS PEMBAYARAN SAMA
         // =========================================================
-        if (
-            $validated['payment_status'] === 'paid' &&
-            $order->status !== 'completed'
-        ) {
-            return response()->json([
-                'message' =>
-                    'Pesanan harus berstatus completed sebelum pembayaran dapat dilakukan.',
-            ], 422);
-        }
 
-        // Status pembayaran sama
         if (
             $order->payment_status ===
             $validated['payment_status']
@@ -635,184 +569,48 @@ class OrderController extends Controller
                 'message' =>
                     'Status pembayaran sudah ' .
                     $validated['payment_status'],
+
                 'data' => $order,
             ]);
         }
 
-        // Pembayaran hanya boleh berubah
-        // dari unpaid menjadi paid
+        // =========================================================
+        // PEMBAYARAN YANG SUDAH LUNAS
+        // TIDAK BOLEH DIKEMBALIKAN KE UNPAID
+        // =========================================================
+
         if (
             $order->payment_status === 'paid' &&
             $validated['payment_status'] === 'unpaid'
         ) {
             return response()->json([
                 'message' =>
-                    'Pembayaran yang sudah lunas tidak dapat dibatalkan',
+                    'Pembayaran yang sudah lunas tidak dapat dibatalkan.',
             ], 422);
         }
+
+        // =========================================================
+        // UPDATE PEMBAYARAN
+        // =========================================================
 
         $order->update([
             'payment_status' =>
                 $validated['payment_status'],
         ]);
 
-        return response()->json([
-            'message' =>
-                'Status pembayaran berhasil diperbarui',
-            'data' => $order,
-        ]);
-    }
-
-
-    // =========================================================
-    // WHATSAPP
-    // CUSTOMER TIDAK PERLU LOGIN
-    // AKSES MENGGUNAKAN ORDER CODE
-    // =========================================================
-    public function whatsapp($orderCode)
-    {
-        $order = Order::with([
+        $order->load([
             'restaurant',
             'table',
             'promo',
             'items.menu',
             'items.variant',
-        ])
-        ->where('order_code', $orderCode)
-        ->firstOrFail();
-
-        $message =
-            "PESANAN BARU\n\n";
-
-        $message .=
-            "Kode Pesanan: " .
-            $order->order_code .
-            "\n";
-
-        $message .=
-            "Meja: " .
-            ($order->table?->name ?? '-') .
-            "\n";
-
-        $message .=
-            "Nama: " .
-            ($order->customer_name ?? '-') .
-            "\n\n";
-
-        $message .=
-            "Pesanan:\n";
-
-        foreach ($order->items as $item) {
-
-            $message .=
-                $item->quantity .
-                "x " .
-                $item->menu->name;
-
-            // Variant
-            if ($item->variant) {
-
-                $message .=
-                    " - " .
-                    $item->variant->name;
-            }
-
-            $message .=
-                " — Rp" .
-                number_format(
-                    $item->subtotal,
-                    0,
-                    ',',
-                    '.'
-                ) .
-                "\n";
-
-            // Addon
-            if (!empty($item->addons)) {
-
-                $addonNames =
-                    collect($item->addons)
-                    ->pluck('name')
-                    ->implode(', ');
-
-                $message .=
-                    "   Topping: " .
-                    $addonNames .
-                    "\n";
-            }
-
-            // Catatan item
-            if ($item->note) {
-
-                $message .=
-                    "   Catatan: " .
-                    $item->note .
-                    "\n";
-            }
-        }
-
-        // Catatan order
-        $message .=
-            "\nCatatan:\n";
-
-        if ($order->note) {
-
-            $message .=
-                $order->note .
-                "\n";
-
-        } else {
-
-            $message .=
-                "-\n";
-        }
-
-        // Promo
-        if ($order->promo) {
-
-            $message .=
-                "\nPromo: " .
-                $order->promo->name .
-                "\n";
-
-            $message .=
-                "Diskon: Rp" .
-                number_format(
-                    $order->discount,
-                    0,
-                    ',',
-                    '.'
-                ) .
-                "\n";
-        }
-
-        // Total
-        $message .=
-            "\nTotal: Rp" .
-            number_format(
-                $order->total,
-                0,
-                ',',
-                '.'
-            ) .
-            "\n\n";
-
-        $message .=
-            "Terima kasih.";
-
-        $whatsappNumber =
-            $order->restaurant->whatsapp;
-
-        $url =
-            "https://wa.me/" .
-            $whatsappNumber .
-            "?text=" .
-            urlencode($message);
+        ]);
 
         return response()->json([
             'message' =>
-                'Link WhatsApp berhasil dibuat',
-            'whatsapp_url' => $url,
+                'Status pembayaran berhasil diperbarui',
+
+            'data' => $order,
         ]);
     }
 }
